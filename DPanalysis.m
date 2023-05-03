@@ -1,37 +1,51 @@
-function [res] = DPanalysis(subj, ear, windowdur, offsetwin, npoints)
+function [res] = DPanalysis(subj, ear)
+
 % Analyze swept tone DPOAE data using least-squares fit of chirp model
 
-% Abdala et al., 2015: Optimizing swept-tone protocols for recording
-% distortion-product otoacoustic emissions in adults and newborns
-maindir = pwd;
-subj = string(subj);
-ear = string(ear);
+%%%%%%%%% Set these parameters %%%%%%%%%%%%%%%%%%
 
-datadir = [maindir '/sweptDPOAE-main/Results/'];
+windowdur = 0.5;
+offsetwin = 0.0; % not finding additional delay
+npoints = 512;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Load in the data
+
+maindir = pwd;
+
+% Select correct subject file for chins or humans
+if subj(1) == 'Q'
+    datadir = [maindir '/sweptDPOAE/Results/'];
+else
+    datadir = [maindir '/sweptDPOAE-main/Results/'];
+end
+subjfile = sprintf('DPOAEswept_%s_%s*.mat', subj, ear);
 subjdir = [datadir char(subj)];
 cd(subjdir)
 
-% Check if subject exists
-checkDIR=dir(sprintf('DPOAEswept_%s_%s*.mat', subj, ear));
+checkDIR=dir(subjfile);
 if isempty(checkDIR)
-    error('No such OAEs for subject %s',subj);
+    fprintf('No file for subject %s %s ear\n', subj, ear)
+    cd(maindir)
+    return
+elseif size(checkDIR,1) > 1
+    fprintf('Too many files for subject %s %s ear', subj, ear)
+    cd(maindir)
+    return
+    % error('No such OAEs for subject %s',subj);
 end
 
 load(checkDIR.name);
 cd(maindir)
-
-if nargin == 2
-    windowdur = 0.04;
-    offsetwin = 0.0; % not finding additional delay
-    npoints = 1024;
-    plot = 0; 
-end
 
 %% Set variables from the stim
 phi1_inst = 2 * pi * stim.phi1_inst;
 phi2_inst = 2 * pi * stim.phi2_inst;
 phi_dp_inst = (2.*stim.phi1_inst - stim.phi2_inst) * 2 * pi;
 rdp = 2 / stim.ratio - 1;    % f_dp = f2 * rdp
+
+trials = size(stim.resp,1); 
 
 t = stim.t;
 if stim.speed < 0 % downsweep
@@ -42,34 +56,7 @@ else
     f_end = stim.fmax;
 end
 
-
-%% Artifact Rejection
-trials = stim.resp;
-energy = squeeze(sum(trials.^2, 2));
-good = energy < median(energy) + 2*mad(energy);
-
-count = 0;
-trials_clean = zeros(sum(good), size(trials, 2));
-for y = 1:size(trials, 1) % just get trials w/o artifact ("good" trials)
-    if good(y) == 1
-        count = count +1;
-        trials_clean(count, :) = trials(y,:);
-    end
-end
-DPOAE = mean(trials_clean, 1);
-
-count_2x = floor(count/2)*2; % need even number of trials
-noise = zeros(count_2x, size(trials, 2));
-count = 0;
-for x = 1:2:count_2x
-    count = count + 1;
-    noise(count,:) = (trials_clean(x,:) - trials_clean(x+1,:)) / 2;
-end
-NOISE = mean(noise,1);
-
-%% Set up for analysis
 % set freq we're testing and the timepoints when they happen.
-
 if abs(stim.speed) < 20         % then in octave scaling
     freq_f2 = 2 .^ linspace(log2(f_start), log2(f_end), npoints);
     freq_f1 = freq_f2 ./ stim.ratio;
@@ -82,28 +69,96 @@ else                            % otherwise linear scaling
     t_freq = (freq_f2-f_start)/stim.speed + stim.buffdur;
 end
 
+%% Artifact Rejection
+
+% Set empty matricies for next steps
+coeffs = zeros(npoints, 6);
+a_temp = zeros(trials, npoints);
+b_temp = zeros(trials, npoints);
+
+% Least Squares fit of DP Only for AR
+for x = 1:trials
+    DPOAE = stim.resp(x, :);
+    fprintf(1, 'Checking trial %d / %d for artifact\n', x, (trials));
+    
+    for k = 1:npoints
+        win = find( (t > (t_freq(k) - windowdur/2)) & ...
+            (t < (t_freq(k) + windowdur/2)));
+        taper = hanning(numel(win))';
+        
+        model_dp = [cos(phi_dp_inst(win)) .* taper;
+            -sin(phi_dp_inst(win)) .* taper];
+        
+        resp = DPOAE(win) .* taper;
+        
+        coeffs(k, 1:2) = model_dp' \ resp';
+    end
+    a_temp(x,:) = coeffs(:, 1);
+    b_temp(x,:) = coeffs(:, 2);
+end
+
+oae = abs(complex(a_temp, b_temp));
+
+median_oae = median(oae);
+std_oae = std(oae);
+resp_AR = stim.resp;
+for j = 1:trials
+    for k = 1:npoints
+        if oae(j,k) > median_oae(1,k) + 4*std_oae(1,k)
+            win = find( (t > (t_freq(k) - windowdur.*.1)) & ...
+                (t < (t_freq(k) + windowdur.*.1)));
+            resp_AR(j,win) = NaN;
+        end
+    end
+end
+
+%% Calculate Noise Floor
+
+% First way to calculate noise floor, just subtracting alternate trials
+numOfTrials = floor(trials/2)*2; % need even number of trials
+noise = zeros(numOfTrials/2, size(resp_AR, 2));
+for x = 1:2:numOfTrials
+    noise(ceil(x/2),:) = (resp_AR(x,:) - resp_AR(x+1,:)) / 2;
+end
+
+DPOAE = mean(resp_AR, 1, "omitNaN");
+NOISE = mean(noise,1, "omitNaN");
+
+
+%% LSF analysis
+
 % Set empty matricies for next steps
 maxoffset = ceil(stim.Fs * offsetwin);
 coeffs = zeros(npoints, 2);
 coeffs_n = zeros(npoints, 2);
 tau_dp = zeros(npoints, 1); % delay if offset > 0
+coeffs_noise = zeros(npoints,8);
 
-%% Least Squares fit of Chirp model
+% Least Squares fit of Chirp model (stimuli, DP, noise two ways)
 for k = 1:npoints
+    
     fprintf(1, 'Running window %d / %d\n', k, npoints);
     
     win = find( (t > (t_freq(k) - windowdur/2)) & ...
         (t < (t_freq(k) + windowdur/2)));
     taper = hanning(numel(win))';
     
+    % set the models
     model_dp = [cos(phi_dp_inst(win)) .* taper;
         -sin(phi_dp_inst(win)) .* taper];
-    
     model_f1 = [cos(phi1_inst(win)) .* taper;
         -sin(phi1_inst(win)) .* taper];
-    
     model_f2 = [cos(phi2_inst(win)) .* taper;
         -sin(phi2_inst(win)) .* taper];
+    model_noise = ...
+        [cos(0.9*phi2_inst(win)) .* taper;
+        -sin(0.9*phi2_inst(win)) .* taper;
+        cos(0.88*phi2_inst(win)) .* taper;
+        -sin(0.88*phi2_inst(win)) .* taper;
+        cos(0.86*phi2_inst(win)) .* taper;
+        -sin(0.86*phi2_inst(win)) .* taper;
+        cos(0.84*phi2_inst(win)) .* taper;
+        -sin(0.84*phi2_inst(win)) .* taper];
     
     % zero out variables for offset calc
     coeff = zeros(maxoffset, 6);
@@ -118,8 +173,8 @@ for k = 1:npoints
         coeff(offset + 1, 1:2) = model_dp' \ resp';
         coeff_n(offset + 1, 1:2) = model_dp' \ resp_n';
         resid(offset + 1, 1) = sum( (resp  - coeff(offset + 1, 1:2) * model_dp).^2);
-        
     end
+    
     resp = DPOAE(win) .* taper;
     resp_n = NOISE(win) .* taper;
     
@@ -132,6 +187,9 @@ for k = 1:npoints
     coeff(1, 5:6) = model_f2' \ resp';
     coeff_n(1, 5:6) = model_f2' \ resp_n';
     resid(1, 3) = sum( (resp  - coeff(1, 5:6) * model_f2).^2);
+    
+    % for model_noise
+    coeffs_noise(k,:) = model_noise' \ resp';
     
     [~, ind] = min(resid(:,1));
     coeffs(k, 1:2) = coeff(ind, 1:2);
@@ -151,222 +209,117 @@ b_f2 = coeffs(:, 6);
 a_n = coeffs_n(:, 1);
 b_n = coeffs_n(:, 2);
 
+% for noise
+noise2 = zeros(npoints,4);
+for i = 1:2:8
+    noise2(:,ceil(i/2)) = complex(coeffs_noise(:,i), coeffs_noise(:,i+1));
+end
+
 phi_dp = tau_dp.*freq_dp'; % cycles (from delay/offset)
 phasor_dp = exp(-1j * phi_dp * 2 * pi);
 
-% % for f1
-% mag_f1 = abs(complex(a_f1, b_f1)) .* stim.VoltageToPascal .*stim.PascalToLinearSPL; %dBSPL
-% theta_f1 = unwrap(angle(complex(a_f1,b_f1)))/(2*pi); % cycles;
-% tau_pg_f1 = -(diff(theta_f1)./diff(freq_f1))/1000; % ms
-%
-% % for f2
-% mag_f2 = abs(complex(a_f2, b_f2)) .* stim.VoltageToPascal .*stim.PascalToLinearSPL;
-% theta_f2 = unwrap(angle(complex(a_f2,b_f2)))/(2*pi);
-% tau_pg_f2 = -(diff(theta_f2)./diff(freq_f2))/1000;
-%
-% % for dp
-% phi_dp = tau_dp.*freq_dp'; % cycles (from delay/offset)
-% phasor_dp = exp(-1j * phi_dp * 2 * pi);
-% mag_dp = abs(complex(a_dp, b_dp).*phasor_dp) .* stim.VoltageToPascal .*stim.PascalToLinearSPL;
-% theta_dp = unwrap(angle(complex(a_dp,b_dp).*phasor_dp))/(2*pi); % cycles from angle
-% theta_dp = theta_dp-max(theta_dp); % starting at zero
-% tau_pg_dp = -(diff(theta_dp)./diff(freq_dp')).*1000; % ms
-% f_x_dp = (freq_dp(2:end) + freq_dp(1:end-1))/2;
-%
-% % for nf
-% mag_nf = abs(complex(a_n, b_n).*phasor_dp) .* stim.VoltageToPascal .*stim.PascalToLinearSPL;
-%
-% %% Separating D and R components by IFFT
-%
-% complex_dp = complex(a_dp, b_dp).*phasor_dp * stim.VoltageToPascal * ...
-%     stim.PascalToLinearSPL;
-%
-% fs = stim.Fs; % Exact value doesn't matter, but simplest to match orig
-%
-% % Reconstruct time-domain response to 100 ms. Then the first 50 ms can be
-% % used, with the recognition that part of the right half is negative time.
-% % 50 ms should still be plenty for all OAE components to have come back
-% % and the impulse response to have decayed to noise floor.
-% timedur = 100e-3;
-% % Check if 1/(frequency resolution) is long enough
-% if 1/mean(abs(diff(freq_dp))) < timedur/2
-%     warning('Too few DPOAE points, aliasing  will likely  occur');
-% end
-% N = roundodd(timedur * fs);
-% f = (0:(N-1))*fs/N; % FFT bin frequencies
-%
-% % Window the frequency domain response to avoid sharp edges while filling
-% % in zeros for empty bins
-% rampsamps = 8;
-% ramp = hanning(2*rampsamps);
-% complex_dp_ramp  = complex_dp;
-% complex_dp_ramp(1:rampsamps) = complex_dp_ramp(1:rampsamps)...
-%     .*ramp(1:rampsamps);
-% complex_dp_ramp((end-rampsamps+1):end) = ...
-%     complex_dp_ramp((end-rampsamps+1):end).* ramp((end-rampsamps+1):end);
-%
-% % Fill in FFT bins from dp data
-% FFT_dp =  interp1(freq_dp, complex_dp_ramp, f);
-% FFT_dp(isnan(FFT_dp)) = 0;
-%
-% % First bin is f=0, then you have even number of bins
-% % Need to take first half and conjugate mirror to fill other.
-% Nhalf = (N-1)/2;
-% nonzeroHalf =  FFT_dp(2:(2+Nhalf-1));
-% FFT_dp((Nhalf+2):end) = conj(nonzeroHalf(end:-1:1));
-%
-% impulse_dp = ifftshift(ifft(FFT_dp));
-%
-% % Make time vector: t=0 will be at the center owing to ifftshift
-% t = (0:(N-1))/fs - timedur/2; % in milleseconds
-%
-% % Start a bit negative because D component has close to 0 delay and go to
-% % half of the reconstructed duration (50 ms) as planned
-% t_min = -4e-3;
-% t_max = timedur*1e3/2;
-% inds_valid = t > t_min & t < t_max;
-% impulse_dp = impulse_dp(inds_valid);
-% t_dp = t(inds_valid);
-%
-% % Plot envelope of impulse response to see if there are two peaks, with the
-% % notch between peaks being somewhere in the 1-5 ms range.
-% figure(40);
-% impulse_dp_env = abs(hilbert(impulse_dp));
-% plot(t_dp*1e3,  impulse_dp_env, 'linew', 2);
-% xlim([t_min*1e3, 20]);
-% xlabel('Time (ms)', 'FontSize', 16);
-% ylabel('Impulse Response Envelope', 'FontSize', 16);
-% set(gca, 'FontSize', 16);
-% title('IFFT method',  'FontSize', 16);
-%
-% % Location of one of the notches..
-% D_only_dur = 3.5e-3;
-%
-% % Do windowing of signals
-% % Start with  hard windows (box) and then smooth edges by 0.5 ms
-% smoothing_kernel = blackman(ceil(0.5e-3*fs));
-% smoothing_kernel  = smoothing_kernel / sum(smoothing_kernel);
-%
-% % Error using conv2
-% % First and second arguments must be single or double.
-% % original code (which works elsewhere?)
-% % win_D_only = conv(t_dp < D_only_dur, smoothing_kernel, 'same');
-% % win_R_only = conv(t_dp > D_only_dur, smoothing_kernel, 'same');
-% % trying the following to solve problem:
-% t_dp_D_only = t_dp.*(t_dp < D_only_dur);
-% t_dp_R_only = t_dp.*(t_dp > D_only_dur);
-% win_D_only = conv(t_dp_D_only, smoothing_kernel, 'same');
-% win_R_only = conv(t_dp_R_only, smoothing_kernel, 'same');
-%
-% impulse_dp_D_only = impulse_dp .* win_D_only;
-% impulse_dp_R_only = impulse_dp .* win_R_only;
-%
-% complex_dp_D_only_allbins = fft(impulse_dp_D_only);
-% complex_dp_R_only_allbins = fft(impulse_dp_R_only);
-% f_complex_dp_D_only_allbins = (0:(numel(impulse_dp_D_only)-1)) ...
-%     * fs/numel(impulse_dp_D_only);
-% phasor_tmin_correction = ...
-%     exp(1j*2*pi*f_complex_dp_D_only_allbins*abs(t_min));
-% complex_dp_D_only_allbins_corrected = complex_dp_D_only_allbins ...
-%     .* phasor_tmin_correction;
-% complex_dp_R_only_allbins_corrected = complex_dp_R_only_allbins ...
-%     .* phasor_tmin_correction;
-% complex_dp_D_IFFT = interp1(f_complex_dp_D_only_allbins,...
-%     complex_dp_D_only_allbins_corrected, freq_dp);
-% complex_dp_R_IFFT = interp1(f_complex_dp_D_only_allbins,...
-%     complex_dp_R_only_allbins_corrected, freq_dp);
-%
-% %% Plot ifft Method
-% figure(41);
-% hold on;
-% plot(freq_dp, db(abs(complex_dp)), 'linew', 2);
-% hold on;
-% semilogx(freq_dp, db(abs(complex_dp_D_IFFT)), 'linew', 2);
-% hold on;
-% semilogx(freq_dp, db(abs(complex_dp_R_IFFT)), 'linew', 2);
-% xlabel('DPOAE Frequency (Hz)', 'FontSize', 16);
-% ylabel('DPOAE level (dB SPL)', 'FontSize', 16);
-% set(gca, 'FontSize', 16);
-% legend('Total', 'D only', 'R only');
-% ylim([-60, 80]);
-% title('Separating by IFFT',  'FontSize', 16);
-%
-%
-% %% Plot figures
-% figure(10);
-% hold on;
-% semilogx(freq_f2, db(mag_dp), 'linew', 2);
-% hold on;
-% semilogx(freq_f1, db(mag_f1), 'linew', 2);
-% hold on;
-% semilogx(freq_f2, db(mag_f2), 'linew', 2);
-% hold on;
-% semilogx(freq_f2, db(mag_nf),'--', 'linew', 2);
-% xlim([stim.fmin * rdp, stim.fmax * rdp]);
-% xlabel('Frequency (Hz)', 'FontSize', 16);
-% ylabel('DPOAE level (dB SPL)', 'FontSize', 16);
-% set(gca, 'FontSize', 16);
-% legend('DP', 'F1', 'F2', 'NF');
-% title('Total DPOAE',  'FontSize', 16);
-% xticks([500, 1000, 2000, 4000, 8000, 16000])
-%
-% figure(30);
-% semilogx(freq_dp, theta_dp, 'o')
-% set(gca, 'FontSize', 16);
-% title('Theta, angle(a,b)', 'FontSize', 16)
-% xlabel('Probe Frequency (Hz)', 'FontSize', 16);
-% ylabel('Phase (cycles)', 'FontSize', 16);
-% xticks([500, 1000, 2000, 4000, 8000, 16000])
-%
-% figure(20);
-% semilogx(f_x_dp, tau_pg_dp, 's');
-% title('Group Delay (-d\theta/df)', 'FontSize', 16);
-% xlabel('2F_1-F_2 Frequency (Hz)', 'FontSize', 16);
-% ylabel('Group Delay (ms)', 'FontSize', 16);
-% set(gca, 'FontSize', 16);
-% ylim([-10, 30])
-% xlim([stim.fmin*rdp, stim.fmax*rdp])
-% xticks([500, 1000, 2000, 4000, 8000, 16000])
-%
-% figure(21);
-% loglog(f_x_dp, tau_pg_dp/1000.*f_x_dp', 's');
-% title('N - for calculating Qerb', 'FontSize', 16);
-% xlabel('2F_1-F_2 Frequency (Hz)', 'FontSize', 16);
-% ylabel('N_{DPOAE}', 'FontSize', 16);
-% set(gca, 'FontSize', 16);
-% xlim([stim.fmin*rdp, stim.fmax*rdp])
-% xticks([500, 1000, 2000, 4000, 8000, 16000])
+oae_complex = complex(a_dp, b_dp);
+noise_complex2 = complex(a_n, b_n);
+noise_complex = mean(noise2,2);
+res.multiplier = stim.VoltageToPascal.* stim.PascalToLinearSPL;
 
-%% Get Calib Data
+%% Plot Results Figure
+figure;
+plot(freq_f2/1000, db(abs(oae_complex).*res.multiplier));
+hold on;
+plot(freq_f2/1000, db(abs(noise_complex).*res.multiplier));
+plot(freq_f2/1000, db(abs(noise_complex2).*res.multiplier));
+plot(freq_f2/1000, db(abs(complex(a_f2,b_f2)).*res.multiplier));
+plot(freq_f1/1000, db(abs(complex(a_f1, b_f1)).*res.multiplier));
+title(sprintf('Subj: %s, Ear: %s', string(subj), string(ear)))
+set(gca, 'XScale', 'log', 'FontSize', 14)
+xlim([.5, 16])
+ylim([-40, 80])
+xticks([.5, 1, 2, 4, 8, 16])
+xlabel('F_2 Frequency (kHz)')
+legend('DP', 'NF', 'Nf2', 'F2', 'F1')
 
-calibdir = [maindir '/EARCAL/'];
-subjdir = [calibdir char(subj)];
-cd(subjdir)
 
-checkDIR=dir(sprintf('Calib_Ph1ER-10X_%s%s*.mat', subj, ear));
-if isempty(checkDIR)
-    fprintf('No such Calibs for subject %s\n',subj);
-else
-    if size(checkDIR, 1) > 1
-        checkDIR = checkDIR(size(checkDIR,1));
+%% Apply EPL
+
+if subj(1) == 'S'
+    
+    % find calib file
+    calibdir = [maindir '/EARCAL/'];
+    subjdir = [calibdir char(subj)];
+    cd(subjdir)
+    
+    checkDIR=dir(sprintf('Calib_Ph1ER-10X_%s%s*.mat', subj, ear));
+    if isempty(checkDIR)
+        fprintf('No such Calibs for subject %s\n',subj);
+    else
+        if size(checkDIR, 1) > 1
+            checkDIR = checkDIR(size(checkDIR,1));
+        end
+        load(checkDIR.name);
+        res.calib.Ph1 = calib;
+        calib1 = 1;
+        clear calib;
     end
-    load(checkDIR.name);
-    res.calib.Ph1 = calib;
-    clear calib;
+    
+    checkDIR=dir(sprintf('Calib_Ph2ER-10X_%s%s*.mat', subj, ear));
+    if isempty(checkDIR)
+        fprintf('No such Calibs for subject %s\n',subj);
+    else
+        if size(checkDIR, 1) > 1
+            checkDIR = checkDIR(size(checkDIR,1));
+        end
+        load(checkDIR.name);
+        res.calib.Ph2 = calib;
+        calib2 = 1;
+    end
+    
+    cd(maindir)
+    
+    % if calibration is here
+    if calib1 == 1 && calib2 == 1
+        
+        % Get EPL units
+        [DP] = calc_EPL(freq_dp, oae_complex.*res.multiplier, res.calib.Ph1);
+        res.complex.dp_epl = DP.P_epl;
+        res.f_epl = DP.f;
+        res.dbEPL_dp = db(abs(DP.P_epl));
+        
+        [NF] = calc_EPL(freq_dp, noise_complex.*res.multiplier, res.calib.Ph1);
+        res.complex.nf_epl = NF.P_epl;
+        res.f_epl = NF.f;
+        res.dbEPL_nf = db(abs(NF.P_epl));
+        
+        %         [F1] = calc_FPL(res.f.f1, res.complex_f1, res.calib.Ph1);
+        %         res.complex_f1_fpl = F1.P_fpl;
+        %         res.f1_fpl = F1.f;
+        %         if exist('res.calib.Ph2', 'var')
+        %             [F2] = calc_FPL(res.f.f2, res.complex_f2, res.calib.Ph2);
+        %         else
+        %             [F2] = calc_FPL(res.f.f2, res.complex_f2, res.calib.Ph1);
+        %         end
+        %         res.complex_f2_fpl = F2.P_fpl;
+        %         res.f2_fpl = F2.f;
+        
+        % plot figure again
+        figure;
+        plot(freq_f2/1000, db(res.dbEPL_dp));
+        hold on;
+        plot(freq_f2/1000, db(res.dbEPL_nf));
+        plot(freq_f2/1000, db(abs(complex(a_f2,b_f2)).*stim.VoltageToPascal.*stim.PascalToLinearSPL));
+        plot(freq_f1/1000, db(abs(complex(a_f1, b_f1)).*stim.VoltageToPascal.*stim.PascalToLinearSPL));
+        %title(sprintf('Subj: %s, Ear: %s', string(subj), string(ear)))
+        set(gca, 'XScale', 'log', 'FontSize', 14)
+        xlim([.5, 16])
+        ylim([-30, 80])
+        xticks([.5, 1, 2, 4, 8, 16])
+        ylabel('Amplitude db EPL')
+        xlabel('F_2 Frequency (kHz)')
+        legend('DP', 'NF', 'F2', 'F1')
+    end
+    
 end
 
-checkDIR=dir(sprintf('Calib_Ph2ER-10X_%s%s*.mat', subj, ear));
-if isempty(checkDIR)
-    fprintf('No such Calibs for subject %s\n',subj);
-else
-    if size(checkDIR, 1) > 1
-        checkDIR = checkDIR(size(checkDIR,1));
-    end
-    load(checkDIR.name);
-    res.calib.Ph2 = calib;
-end
-
-cd(maindir)
 
 %% Save result function
 res.windowdur = windowdur;
@@ -384,41 +337,21 @@ res.a.f1 = a_f1;
 res.b.f1 = b_f1;
 res.a.f2 = a_f2;
 res.b.f2 = b_f2;
-res.a.n = a_n;
+res.a.n = a_n; % subtraction method
 res.b.n = b_n;
 res.tau.dp = tau_dp;
 res.stim = stim;
-res.cleantrialcount = count*2;
-res.stim = stim;
-res.complex_dp = complex(a_dp, b_dp).*phasor_dp .* stim.VoltageToPascal .* stim.PascalToLinearSPL ;
-res.complex_nf = complex(a_n, b_n) .* stim.VoltageToPascal .* stim.PascalToLinearSPL ;
-res.complex_f1 = complex(a_f1, b_f1);
-res.complex_f2 = complex(a_f2, b_f2);
-res.subj = subj; 
-res.ear = ear; 
+res.subj = subj;
+res.ear = ear;
+res.complex.oae = oae_complex; 
+res.complex.nf = noise_complex; 
+res.complex.nf2 = noise_complex2; 
 
-%% Get EPL units
-[DP] = calc_EPL(res.f.dp, res.complex_dp, res.calib.Ph1);
-res.complex_dp_epl = DP.P_epl;
-res.f_epl = DP.f;
-[NF] = calc_EPL(res.f.dp, res.complex_nf, res.calib.Ph1);
-res.complex_nf_epl = NF.P_epl;
-[F1] = calc_FPL(res.f.f1, res.complex_f1, res.calib.Ph1);
-res.complex_f1_fpl = F1.P_fpl;
-res.f1_fpl = F1.f;
-if exist('res.calib.Ph2', 'var')
-    [F2] = calc_FPL(res.f.f2, res.complex_f2, res.calib.Ph2);
-else
-    [F2] = calc_FPL(res.f.f2, res.complex_f2, res.calib.Ph1);
-end
-res.complex_f2_fpl = F2.P_fpl;
-res.f2_fpl = F2.f;
-%% Save
+% Save
+% respdir = [maindir '/Results/DP/'];
+% fname = strcat(respdir, 'DP_', stim.subj, '_', stim.ear,'.mat');
+% save(fname,'res');
 
-respdir = [maindir '/Results/'];
-fname = strcat(respdir, 'DP_', stim.subj, '_', stim.ear,'.mat');
-save(fname,'res');
-
-DPplot(res); 
 
 end
+
