@@ -2,8 +2,8 @@ function [res] = SFanalysis(subj, ear)
 
 %%% Set these parameters %%%%%%%%%%%%%
 
-windowdur = 0.060; % 40ms in paper
-offsetwin = 0.010; % 20ms in paper
+windowdur = 0.040; % 40ms in paper
+offsetwin = 0.020; % 20ms in paper
 npoints = 512;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

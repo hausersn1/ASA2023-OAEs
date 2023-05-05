@@ -18,7 +18,7 @@ for i = 1:length(subjects)
     for j = 1:length(ears)
         s = char(subjects(i)); 
         e = char(ears(j)); 
-        DPanalysis(s, e); 
+        %DPanalysis(s, e); 
         SFanalysis(s,e); 
     end
 end

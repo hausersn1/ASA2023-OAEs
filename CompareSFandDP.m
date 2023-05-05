@@ -142,6 +142,83 @@ for x = 1:length(groups)
     end
 end
 
+%% LME 
+
+%make the table
+points = length(centerFreqs); 
+
+for i = 1:size(carbo_dpoae,1)
+    amp_carbo((1:points)+((i-1).*points), 1) = carbo_dpoae(i, :); 
+    group_carbo((1:points)+((i-1).*points), 1) = {'carbo'};
+    freq_carbo((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_carbo((1:points)+((i-1).*points), 1) = {'dp'}; 
+    chin_carbo((1:points)+((i-1).*points), 1) = i; 
+    amp_carbo2((1:points)+((i-1).*points), 1) = carbo_sfoae(i, :); 
+    group_carbo2((1:points)+((i-1).*points), 1) = {'carbo'};
+    freq_carbo2((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_carbo2((1:points)+((i-1).*points), 1) = {'sf'}; 
+    chin_carbo2((1:points)+((i-1).*points), 1) = i; 
+end 
+j = i; 
+
+for i = 1:size(tts_dpoae,1)
+    amp_tts((1:points)+((i-1).*points), 1) = tts_dpoae(i, :); 
+    group_tts((1:points)+((i-1).*points), 1) = {'tts'};
+    freq_tts((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_tts((1:points)+((i-1).*points), 1) = {'dp'}; 
+    amp_tts2((1:points)+((i-1).*points), 1) = tts_sfoae(i, :); 
+    group_tts2((1:points)+((i-1).*points), 1) = {'tts'};
+    freq_tts2((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_tts2((1:points)+((i-1).*points), 1) = {'sf'}; 
+    chin_tts((1:points)+((i-1).*points), 1) = j+i; 
+    chin_tts2((1:points)+((i-1).*points), 1) = j+i; 
+end 
+k = j+i; 
+for i = 1:size(onh_dpoae,1)
+    amp_onh((1:points)+((i-1).*points), 1) = onh_dpoae(i, :); 
+    group_onh((1:points)+((i-1).*points), 1) = {'onh'};
+    freq_onh((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_onh((1:points)+((i-1).*points), 1) = {'dp'}; 
+    amp_onh2((1:points)+((i-1).*points), 1) = onh_sfoae(i, :); 
+    group_onh2((1:points)+((i-1).*points), 1) = {'onh'};
+    freq_onh2((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_onh2((1:points)+((i-1).*points), 1) = {'sf'}; 
+    chin_onh((1:points)+((i-1).*points), 1) = i+k; 
+    chin_onh2((1:points)+((i-1).*points), 1) = i+k; 
+end 
+l = i+k; 
+
+for i = 1:size(ynh_dpoae,1)
+    amp_ynh((1:points)+((i-1).*points), 1) = ynh_dpoae(i, :); 
+    group_ynh((1:points)+((i-1).*points), 1) = {'ynh'};
+    freq_ynh((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_ynh((1:points)+((i-1).*points), 1) = {'dp'}; 
+    amp_ynh2((1:points)+((i-1).*points), 1) = ynh_sfoae(i, :); 
+    group_ynh2((1:points)+((i-1).*points), 1) = {'ynh'};
+    freq_ynh2((1:points)+((i-1).*points), 1) = centerFreqs;
+    type_ynh2((1:points)+((i-1).*points), 1) = {'sf'}; 
+    chin_ynh((1:points)+((i-1).*points), 1) = l+i; 
+    chin_ynh2((1:points)+((i-1).*points), 1) = l+i; 
+end 
+
+amp = [amp_carbo; amp_carbo2; amp_tts; amp_tts2;amp_onh; amp_onh2;amp_ynh; amp_ynh2]; 
+group = [group_carbo; group_carbo2; group_tts; group_tts2;group_onh; group_onh2;group_ynh; group_ynh2]; 
+freq = [freq_carbo; freq_carbo2; freq_tts; freq_tts2;freq_onh; freq_onh2;freq_ynh; freq_ynh2]; 
+type = [type_carbo; type_carbo2; type_tts; type_tts2;type_onh; type_onh2;type_ynh; type_ynh2]; 
+chin = [chin_carbo; chin_carbo2; chin_tts; chin_tts2;chin_onh; chin_onh2;chin_ynh; chin_ynh2];
+
+table = table(chin, type, freq, group, amp,'VariableNames',{'chin', 'OAEtype','Frequency','Group','dBSPL'});
+
+table.OAEtype = categorical(table.OAEtype); 
+table.Group = categorical(table.Group); 
+table.chin = categorical(table.chin); 
+
+
+lme = fitlme(table, 'dBSPL~Group*OAEtype + Frequency +(1|chin)') %+Frequency+OAEtype+(Group|OAEtype)'); 
+
+
+
+
 
 %% Plotting Results
 figure(10);

@@ -4,7 +4,7 @@ function [res] = DPanalysis(subj, ear)
 
 %%%%%%%%% Set these parameters %%%%%%%%%%%%%%%%%%
 
-windowdur = 0.5;
+windowdur = 0.3;
 offsetwin = 0.0; % not finding additional delay
 npoints = 512;
 
