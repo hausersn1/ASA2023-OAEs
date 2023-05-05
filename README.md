@@ -9,6 +9,7 @@ Figures will be plotted of the response and the variables will be saved in a str
 
 `pullData.m` is designed to run the analysis script on many subjects and ears at once. If a data file is not found, it will be skipped. 
 
+## Plotting data and further analysis
 `CompareSFandDP.m` has code for averaging responses across half-octave frequency bands and looking at the data for each exposure groups. DP and SF amplitudes are also plotted against each other using this code. Resulting data is stored in a table which can be read into R for LME modeling/statistics using `lme_ASA23.R`. 
 
 There are multiple scripts that will plot resulting data (i.e., the 'res' variable), including
