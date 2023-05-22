@@ -1,7 +1,7 @@
 %% Binning and further analysis in 1/3 octave bins
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Takes analyzed data and
-% 1. Further bins into 3rd octaves
+% 1. Further bins into 1/2 octaves
 % 2.
 % 3.
 %
@@ -9,14 +9,46 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Subjects to set in format 'SubjID_ear')
-tts = {'Q406_R', 'Q406_L', 'Q407_R', 'Q407_L'};
-carbo = {'Q403_R', 'Q403_L', 'Q381_R'};
+tts = {'Q402_R', 'Q402_L', 'Q406_R', 'Q406_L', 'Q407_R', 'Q407_L'};
+carbo = {'Q405_R', 'Q405_L', 'Q403_R', 'Q403_L'};  %, 'Q381_R'};
 ONH = {'Q298_L', 'Q298_R', 'Q351_R', 'Q351_L', 'Q368_R', 'Q368_L'};
-YNH = {'Q421_L', 'Q421_R', 'Q412_L', 'Q412_R'};
-
+YNH = {'Q421_L', 'Q421_R', 'Q412_L', 'Q412_R', 'Q414_L', 'Q414_R', 'Q415_L'}; 
+%human = {'S356_R', 'S343_R', 'S354_R', 'S357_R', 'SH1_R', 'SBC_R', ...
+%    'S356_L', 'S343_L', 'S354_L', 'S357_L', 'SH1_L', 'SBC_L'}; 
 % Set groups to analyze
 groups = {tts, carbo, ONH, YNH};
 labels = {'TTS', 'Carbo', 'ONH', 'YNH'};
+
+% Colors
+% colors light to dark
+blue=[247,251,255;222,235,247;198,219,239;
+    158,202,225; 107,174,214; 66,146,198 ; 
+    33,113,181; 8,81,156; 8,48,107]./255;
+orange = [255,245,235; 254,230,206; 253,208,162;
+    253,174,107; 253,141,60; 241,105,19; 
+    217,72,1; 166,54,3; 127,39,4]./255; 
+purple = [252,251,253; 239,237,245; 218,218,235; 
+    188,189,220; 158,154,200; 128,125,186; 
+    106,81,163; 84,39,143; 63,0,125]./255; 
+black = [255,255,255; 240,240,240; 217,217,217; 
+    189,189,189; 150,150,150; 115,115,115; 
+    82,82,82; 37,37,37; 10,10,10]./255;
+
+color1 = [140,81,10; 191,129,45; 223,194,125; % gold to teal
+    246,232,195; 245,245,245; 199,234,229; 
+    128,205,193; 53,151,143; 1,102,94]./255; 
+
+color2 = [178,24,43; 214,96,77; 244,165,130; % red to blue
+    253,219,199; 247,247,247; 209,229,240; 
+    146,197,222; 67,147,195; 33,102,172]./255; 
+
+c3 = [158,1,66; 213,62,79; 244,109,67; 
+    253,174,97; 254,224,139; 255,255,191; 
+    230,245,152; 171,221,164; 102,194,165; 
+    50,136,189; 94,79,162]./255; 
+
+m={'+', 'o', '*', '.', 'x', 'square', 'diamond', 'v', '^', '>', '<', 'pentagram'}; 
+
 
 % Set frequency bands to analyze
 fmin = 0.5;
@@ -142,6 +174,7 @@ for x = 1:length(groups)
     end
 end
 
+
 %% LME 
 
 %make the table
@@ -213,15 +246,10 @@ table.OAEtype = categorical(table.OAEtype);
 table.Group = categorical(table.Group); 
 table.chin = categorical(table.chin); 
 
+writetable(table, 'data.csv')
 
-lme = fitlme(table, 'dBSPL~Group*OAEtype + Frequency +(1|chin)') %+Frequency+OAEtype+(Group|OAEtype)'); 
-
-
-
-
-
-%% Plotting Results
-figure(10);
+%% Plotting Results -- x and o for different half octave bands
+figure;
 figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
 figure_prop_val = {'auto', 'inches', [1 1 5 4]}; % xcor, ycor, xwid, yheight
 set(gcf, figure_prop_name, figure_prop_val);
@@ -246,30 +274,7 @@ legend('TTS', 'Carbo', 'ONH', 'YNH', 'location', 'Northwest')
 set(gca, 'XScale', 'log', 'FontSize', 14)
 
 print -djpeg -r600 groupDPvsSFbyFreq
-%% all data plot
-% colors light to dark
-blue=[247,251,255;222,235,247;198,219,239;
-    158,202,225; 107,174,214; 66,146,198 ; 
-    33,113,181; 8,81,156; 8,48,107]./255;
-orange = [255,245,235; 254,230,206; 253,208,162;
-    253,174,107; 253,141,60; 241,105,19; 
-    217,72,1; 166,54,3; 127,39,4]./255; 
-purple = [252,251,253; 239,237,245; 218,218,235; 
-    188,189,220; 158,154,200; 128,125,186; 
-    106,81,163; 84,39,143; 63,0,125]./255; 
-black = [255,255,255; 240,240,240; 217,217,217; 
-    189,189,189; 150,150,150; 115,115,115; 
-    82,82,82; 37,37,37; 10,10,10]./255;
-
-color1 = [140,81,10; 191,129,45; 223,194,125; % gold to teal
-    246,232,195; 245,245,245; 199,234,229; 
-    128,205,193; 53,151,143; 1,102,94]./255; 
-
-color2 = [178,24,43; 214,96,77; 244,165,130; % red to blue
-    253,219,199; 247,247,247; 209,229,240; 
-    146,197,222; 67,147,195; 33,102,172]./255; 
-
-m={'+', 'o', '*', '.', 'x', 'square', 'diamond', 'v', '^', '>', '<', 'pentagram'}; 
+%% all data plot ---- don't need, by frequency 
 
 figure; 
 figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
@@ -307,10 +312,10 @@ ylim([-10, 50])
 
 print -djpeg -r600 groupSFvsDP
 
-%% 
+%% %% 
 figure; 
 figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
-figure_prop_val = {'auto', 'inches', [1 1 6 6]}; % xcor, ycor, xwid, yheight
+figure_prop_val = {'auto', 'inches', [1 1 6 5]}; % xcor, ycor, xwid, yheight
 set(gcf, figure_prop_name, figure_prop_val);
 hold on;
 sz = 50; 
@@ -337,14 +342,143 @@ for i=1:size(ynh_sfoae,2)
     scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
         'MarkerFaceColor', color1(7,:), 'MarkerEdgeColor', 'k')
     p4 = scatter(avg_sfoae(4,i), avg_dpoae(4,i), sz, 'Marker', m{7},...
-        'MarkerFaceColor', color1(8,:), 'MarkerEdgeColor', 'k')
+        'MarkerFaceColor', color1(8,:), 'MarkerEdgeColor', 'k'); 
 end
 title('SF vs DP amplitude')
 xlabel('SFOAE (dB SPL)')
 ylabel('DPOAE (dB SPL)')
 legend([p1 p2 p3 p4], {'TTS', 'Carbo', 'ONH', 'YNH'}, 'location', 'Southeast')
-set(gca, 'FontSize', 14)
+set(gca, 'FontSize', 16, 'FontName', 'Franklin Gothic')
 xlim([-10, 50])
 ylim([-10, 50])
 
-print -djpeg -r600 allSFvsDP
+print -djpeg -r600 allDvR
+
+%% Young vs Old 
+figure; 
+figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
+figure_prop_val = {'auto', 'inches', [1 1 5 4.5]}; % xcor, ycor, xwid, yheight
+set(gcf, figure_prop_name, figure_prop_val);
+hold on;
+sz = 70; 
+plot([-10, 50], [-10, 50], '--', 'color', black(6, :), 'linew', 2)
+for i=1:size(ynh_sfoae,2)
+    if i == 1
+    p2 = scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    else 
+        scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    end
+    %p4 = scatter(avg_sfoae(4,i), avg_dpoae(4,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(8,:), 'MarkerEdgeColor', 'k'); 
+end
+for i=1:size(onh_sfoae,2)
+    if i ==1
+    p1 = scatter(onh_sfoae(:,i), onh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(5,:), 'MarkerEdgeColor', 'k'); 
+    else
+        scatter(onh_sfoae(:,i), onh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(5,:), 'MarkerEdgeColor', 'k')
+    end
+    %p3 = scatter(avg_sfoae(3,i), avg_dpoae(3,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(2,:), 'MarkerEdgeColor', 'k');
+end
+
+title('Age')
+xlabel('SFOAE (dB SPL)')
+ylabel('DPOAE (dB SPL)')
+legend([p1 p2], {'Older', 'Younger'}, 'location', 'Southeast')
+xlim([-10, 50])
+ylim([-10, 50])
+xticks([-10:10:50])
+yticks([0:10:50])
+set(gca, 'FontSize', 18, 'FontName', 'Franklin Gothic')
+
+print -djpeg -r600 youngOldDvR
+
+%% Young vs TTS 
+figure; 
+figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
+figure_prop_val = {'auto', 'inches', [1 1 5 4.5]}; % xcor, ycor, xwid, yheight
+set(gcf, figure_prop_name, figure_prop_val);
+hold on;
+sz = 70; 
+plot([-10, 50], [-10, 50], '--', 'color', black(6, :), 'linew', 2)
+for i=1:size(ynh_sfoae,2)
+    if i == 1
+    p2 = scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    else 
+        scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    end
+    %p4 = scatter(avg_sfoae(4,i), avg_dpoae(4,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(8,:), 'MarkerEdgeColor', 'k'); 
+end
+for i=1:size(tts_sfoae,2)
+    if i ==1
+    p1 = scatter(tts_sfoae(:,i), tts_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(2,:), 'MarkerEdgeColor', 'k'); 
+    else
+        scatter(tts_sfoae(:,i), tts_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(2,:), 'MarkerEdgeColor', 'k')
+    end
+    %p3 = scatter(avg_sfoae(3,i), avg_dpoae(3,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(2,:), 'MarkerEdgeColor', 'k');
+end
+
+title('Synaptopathy')
+xlabel('SFOAE (dB SPL)')
+ylabel('DPOAE (dB SPL)')
+legend([p1 p2], {'TTS', 'Unexposed'}, 'location', 'Southeast')
+xlim([-10, 50])
+ylim([-10, 50])
+xticks([-10:10:50])
+yticks([0:10:50])
+set(gca, 'FontSize', 18, 'FontName', 'Franklin Gothic')
+
+print -djpeg -r600 youngTTSDvR
+
+%% Young vs Carbo 
+figure; 
+figure_prop_name = {'PaperPositionMode', 'units', 'Position'};
+figure_prop_val = {'auto', 'inches', [1 1 5 4.5]}; % xcor, ycor, xwid, yheight
+set(gcf, figure_prop_name, figure_prop_val);
+hold on;
+sz = 70; 
+plot([-10, 50], [-10, 50], '--', 'color', black(6, :), 'linew', 2)
+for i=1:size(ynh_sfoae,2)
+    if i == 1
+    p2 = scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    else 
+        scatter(ynh_sfoae(:,i), ynh_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(9,:), 'MarkerEdgeColor', 'k'); 
+    end
+    %p4 = scatter(avg_sfoae(4,i), avg_dpoae(4,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(8,:), 'MarkerEdgeColor', 'k'); 
+end
+for i=1:size(carbo_sfoae,2)
+    if i ==1
+    p1 = scatter(carbo_sfoae(:,i), carbo_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(11,:), 'MarkerEdgeColor', 'k'); 
+    else
+        scatter(carbo_sfoae(:,i), carbo_dpoae(:,i), sz, 'Marker', m{2},...
+        'MarkerFaceColor', c3(11,:), 'MarkerEdgeColor', 'k')
+    end
+    %p3 = scatter(avg_sfoae(3,i), avg_dpoae(3,i), sz, 'Marker', m{7},...
+    %    'MarkerFaceColor', color1(2,:), 'MarkerEdgeColor', 'k');
+end
+
+title('Carboplatin')
+xlabel('SFOAE (dB SPL)')
+ylabel('DPOAE (dB SPL)')
+legend([p1 p2], {'Carboplatin', 'Unexposed'}, 'location', 'Southeast')
+xlim([-10, 50])
+ylim([-10, 50])
+xticks([-10:10:50])
+yticks([0:10:50])
+set(gca, 'FontSize', 18, 'FontName', 'Franklin Gothic')
+
+print -djpeg -r600 youngCarboDvR

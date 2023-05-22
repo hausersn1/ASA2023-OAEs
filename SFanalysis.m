@@ -3,7 +3,7 @@ function [res] = SFanalysis(subj, ear)
 %%% Set these parameters %%%%%%%%%%%%%
 
 windowdur = 0.040; % 40ms in paper
-offsetwin = 0.020; % 20ms in paper
+offsetwin = 0.0; % 20ms in paper
 npoints = 512;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -62,6 +62,8 @@ else
     t_freq = (testfreq-f1)/stim.speed + stim.buffdur;
 end
 
+durs = .038*(2.^(-0.3*t_freq)-1)/ (-0.3*log(2)) + 0.038; 
+
 %% Artifact rejection
 
 % Cancel out stimulus 
@@ -84,6 +86,7 @@ for x = 1:trials
     fprintf(1, 'Checking trial %d / %d for artifact\n', x, trials);
     
     for k = 1:npoints
+        windowdur = durs(k); 
         win = find( (t > (t_freq(k) - windowdur/2)) & ...
             (t < (t_freq(k) + windowdur/2)));
             taper = hanning(numel(win))';
@@ -104,8 +107,8 @@ resp_AR = SFOAEtrials;
 for j = 1:trials
     for k = 1:npoints
         if oae(j,k) > median_oae(1,k) + 4*std_oae(1,k)
-            win = find( (t > (t_freq(k) - windowdur.*.1)) & ...
-                (t < (t_freq(k) + windowdur.*.1)));
+            win = find( (t > (t_freq(k) - durs(k).*.1)) & ...
+                (t < (t_freq(k) + durs(k).*.1)));
             resp_AR(j,win) = NaN;
         end
     end
@@ -142,10 +145,13 @@ coeffs_n = zeros(npoints, 2);
 tau = zeros(npoints, 1);
 coeffs_noise = zeros(npoints,8);
 
+durs = .038*(2.^(-0.3*t_freq)-1)/ (-0.3*log(2)) + 0.038; 
+
+
 % Generate model of chirp and test against response
 for k = 1:npoints
     fprintf(1, 'Running window %d / %d\n', k, (npoints));
-    
+    windowdur = durs(k); 
     win = find( (t > (t_freq(k)-windowdur/2)) & ...
         (t < (t_freq(k)+windowdur/2)));
     taper = hanning(numel(win))';
@@ -158,14 +164,14 @@ for k = 1:npoints
     
     % nearby frequencies for nf calculation
 
-    model_noise = [cos(phiProbe_inst(win)) .* taper;
+    model_noise = [cos(1.1*phiProbe_inst(win)) .* taper;
         -sin(1.1*phiProbe_inst(win)) .* taper;
-        cos(1.1*phiProbe_inst(win)) .* taper;
-        -sin(1.2*phiProbe_inst(win)) .* taper;
-        cos(1.4*phiProbe_inst(win)) .* taper;
-        -sin(1.4*phiProbe_inst(win)) .* taper;
-        cos(1.6*phiProbe_inst(win)) .* taper;
-        -sin(1.6*phiProbe_inst(win)) .* taper];
+        cos(1.12*phiProbe_inst(win)) .* taper;
+        -sin(1.12*phiProbe_inst(win)) .* taper;
+        cos(1.14*phiProbe_inst(win)) .* taper;
+        -sin(1.14*phiProbe_inst(win)) .* taper;
+        cos(1.16*phiProbe_inst(win)) .* taper;
+        -sin(1.16*phiProbe_inst(win)) .* taper];
     
     % zero out variables for offset calc
     coeff = zeros(maxoffset, 2);
@@ -213,12 +219,12 @@ oae_complex = complex(a, b).*phasor;
 noise_complex2 = complex(a_n, b_n);
 noise_complex = mean(noise2,2);
 res.multiplier = stim.VoltageToPascal.* stim.PascalToLinearSPL;
-
+drawnow; 
 %% Plot resulting figure
 figure;
-plot(testfreq/1000, db(abs(oae_complex).*res.multiplier));
+plot(testfreq/1000, db(abs(oae_complex).*res.multiplier), 'linew', 1.75);
 hold on;
-plot(testfreq/1000, db(abs(noise_complex).*res.multiplier));
+plot(testfreq/1000, db(abs(noise_complex).*res.multiplier), '--', 'linew', 1.5);
 title(sprintf('SFOAE Subj: %s, Ear: %s', string(subj), string(ear)))
 set(gca, 'XScale', 'log', 'FontSize', 14)
 xlim([.5, 16])

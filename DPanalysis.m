@@ -4,7 +4,7 @@ function [res] = DPanalysis(subj, ear)
 
 %%%%%%%%% Set these parameters %%%%%%%%%%%%%%%%%%
 
-windowdur = 0.3;
+windowdur = 0.25;
 offsetwin = 0.0; % not finding additional delay
 npoints = 512;
 
@@ -70,6 +70,11 @@ else                            % otherwise linear scaling
 end
 
 %% Artifact Rejection
+% high pass filter the response (can also be done on ER10X hardware) 
+%filtcutoff = 300;
+%b = fir1(1000, filtcutoff*2/stim.Fs, 'high');
+%DPOAEtrials= filtfilt(b, 1, stim.resp')';
+DPOAEtrials = stim.resp;
 
 % Set empty matricies for next steps
 coeffs = zeros(npoints, 6);
@@ -78,7 +83,7 @@ b_temp = zeros(trials, npoints);
 
 % Least Squares fit of DP Only for AR
 for x = 1:trials
-    DPOAE = stim.resp(x, :);
+    DPOAE = DPOAEtrials(x, :);
     fprintf(1, 'Checking trial %d / %d for artifact\n', x, (trials));
     
     for k = 1:npoints
@@ -101,7 +106,7 @@ oae = abs(complex(a_temp, b_temp));
 
 median_oae = median(oae);
 std_oae = std(oae);
-resp_AR = stim.resp;
+resp_AR = DPOAEtrials;
 for j = 1:trials
     for k = 1:npoints
         if oae(j,k) > median_oae(1,k) + 4*std_oae(1,k)
@@ -133,11 +138,14 @@ coeffs = zeros(npoints, 2);
 coeffs_n = zeros(npoints, 2);
 tau_dp = zeros(npoints, 1); % delay if offset > 0
 coeffs_noise = zeros(npoints,8);
+%durs = -.5*(2.^(0.003*t_freq)-1)/ (0.003*log(2)) + 0.5; 
+
 
 % Least Squares fit of Chirp model (stimuli, DP, noise two ways)
 for k = 1:npoints
     
     fprintf(1, 'Running window %d / %d\n', k, npoints);
+    %windowdur = durs(k); 
     
     win = find( (t > (t_freq(k) - windowdur/2)) & ...
         (t < (t_freq(k) + windowdur/2)));
@@ -151,14 +159,14 @@ for k = 1:npoints
     model_f2 = [cos(phi2_inst(win)) .* taper;
         -sin(phi2_inst(win)) .* taper];
     model_noise = ...
-        [cos(0.9*phi2_inst(win)) .* taper;
-        -sin(0.9*phi2_inst(win)) .* taper;
-        cos(0.88*phi2_inst(win)) .* taper;
-        -sin(0.88*phi2_inst(win)) .* taper;
-        cos(0.86*phi2_inst(win)) .* taper;
-        -sin(0.86*phi2_inst(win)) .* taper;
-        cos(0.84*phi2_inst(win)) .* taper;
-        -sin(0.84*phi2_inst(win)) .* taper];
+        [cos(0.9*phi_dp_inst(win)) .* taper;
+        -sin(0.9*phi_dp_inst(win)) .* taper;
+        cos(0.88*phi_dp_inst(win)) .* taper;
+        -sin(0.88*phi_dp_inst(win)) .* taper;
+        cos(0.86*phi_dp_inst(win)) .* taper;
+        -sin(0.86*phi_dp_inst(win)) .* taper;
+        cos(0.84*phi_dp_inst(win)) .* taper;
+        -sin(0.84*phi_dp_inst(win)) .* taper];
     
     % zero out variables for offset calc
     coeff = zeros(maxoffset, 6);
@@ -225,25 +233,26 @@ res.multiplier = stim.VoltageToPascal.* stim.PascalToLinearSPL;
 
 %% Plot Results Figure
 figure;
-plot(freq_f2/1000, db(abs(oae_complex).*res.multiplier));
+plot(freq_f2/1000, db(abs(oae_complex).*res.multiplier), 'linew', 1.75);
 hold on;
-plot(freq_f2/1000, db(abs(noise_complex).*res.multiplier));
-plot(freq_f2/1000, db(abs(noise_complex2).*res.multiplier));
-plot(freq_f2/1000, db(abs(complex(a_f2,b_f2)).*res.multiplier));
-plot(freq_f1/1000, db(abs(complex(a_f1, b_f1)).*res.multiplier));
-title(sprintf('Subj: %s, Ear: %s', string(subj), string(ear)))
+plot(freq_f2/1000, db(abs(noise_complex).*res.multiplier), '--', 'linew', 1.5);
+%plot(freq_f2/1000, db(abs(noise_complex2).*res.multiplier));
+%plot(freq_f2/1000, db(abs(complex(a_f2,b_f2)).*res.multiplier));
+%plot(freq_f1/1000, db(abs(complex(a_f1, b_f1)).*res.multiplier));
+title(sprintf('DPOAE Subj: %s, Ear: %s', string(subj), string(ear)))
 set(gca, 'XScale', 'log', 'FontSize', 14)
 xlim([.5, 16])
-ylim([-40, 80])
+ylim([-40, 40])
 xticks([.5, 1, 2, 4, 8, 16])
 xlabel('F_2 Frequency (kHz)')
-legend('DP', 'NF', 'Nf2', 'F2', 'F1')
-
+legend('DPOAE', 'NF')
+drawnow; 
 
 %% Apply EPL
 
 if subj(1) == 'S'
-    
+    calib1 = 0; 
+    calib2 = 0; 
     % find calib file
     calibdir = [maindir '/EARCAL/'];
     subjdir = [calibdir char(subj)];
@@ -277,7 +286,7 @@ if subj(1) == 'S'
     cd(maindir)
     
     % if calibration is here
-    if calib1 == 1 && calib2 == 1
+    if calib1 == 1 
         
         % Get EPL units
         [DP] = calc_EPL(freq_dp, oae_complex.*res.multiplier, res.calib.Ph1);
@@ -348,9 +357,9 @@ res.complex.nf = noise_complex;
 res.complex.nf2 = noise_complex2; 
 
 % Save
-% respdir = [maindir '/Results/DP/'];
-% fname = strcat(respdir, 'DP_', stim.subj, '_', stim.ear,'.mat');
-% save(fname,'res');
+respdir = [maindir '/Results/DP/'];
+fname = strcat(respdir, 'DP_', stim.subj, '_', stim.ear,'.mat');
+save(fname,'res');
 
 
 end
